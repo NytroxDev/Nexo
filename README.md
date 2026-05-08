@@ -33,7 +33,7 @@ No encryption overhead (yet — will follow Veltix's TLS support when it lands).
 ## Quick Start
 
 ```bash
-pip install nexo
+pip install nexo-transfert
 ```
 
 ### Receive files (on machine B)

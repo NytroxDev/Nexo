@@ -3,7 +3,7 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nexo"
+name = "nexo_transfert"
 version = "0.0.1"
 description = "Fast and reliable local file transfer powered by Veltix"
 readme = "README.md"
@@ -26,7 +26,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Communications :: File Sharing",
-    "Topic :: Networking",
 ]
 
 [project.urls]
