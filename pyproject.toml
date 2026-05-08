@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexo"
+version = "0.0.1"
+description = "Fast and reliable local file transfer powered by Veltix"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = [
+    "veltix>=1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["nexo*"]
+
+[project.scripts]
+nexo = "nexo.main:main"
