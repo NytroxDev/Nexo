@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.3 : 2026-05-09
+
+### Added
+
+- `nexo/__main__.py` — allows `python -m nexo` as an alternative to the installed `nexo` command
+
 ## 0.0.2 : 2026-05-09
 
 ### Added
