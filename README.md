@@ -80,6 +80,7 @@ NexoClient().send("photo.jpg", "192.168.1.42", 9000)
 ```
 
 Full CLI and API reference: **[GUIDE.md](GUIDE.md)**
+
 Changelog: **[CHANGELOG.md](CHANGELOG.md)**
 
 ---
