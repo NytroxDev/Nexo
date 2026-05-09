@@ -1,6 +1,7 @@
 import argparse
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -9,7 +10,7 @@ from veltix import Logger, LoggerConfig, LogLevel
 from nexo import cli
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     Logger.get_instance(LoggerConfig(
         level=LogLevel.DEBUG,
         show_caller=False,

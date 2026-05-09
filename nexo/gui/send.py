@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 from pathlib import Path
+from typing import Optional
 
 from nexo.core import send_file
 from nexo.gui.theme import SURFACE, FG, FONT_SM
@@ -68,7 +69,7 @@ class SendTab:
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _done(self, ok: bool, err: str | None) -> None:
+    def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
         if ok:
             self.progress["value"] = 100

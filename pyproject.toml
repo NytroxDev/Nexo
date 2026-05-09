@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexo_transfert"
-version = "0.0.1"
+version = "0.0.2"
 description = "Fast and reliable local file transfer powered by Veltix"
 readme = "README.md"
 requires-python = ">=3.8"
