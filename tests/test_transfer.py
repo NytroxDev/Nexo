@@ -2,13 +2,10 @@
 
 import hashlib
 import os
-import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nexo.core.server import start_server
 from nexo.core.client import send_file

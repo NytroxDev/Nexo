@@ -1,10 +1,12 @@
-# Nexo
+# nexo-transfert
 
 Fast and reliable local file transfer powered by [Veltix](https://github.com/NytroxDev/Veltix).
 
 [![License](https://img.shields.io/github/license/NytroxDev/Nexo)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue)](https://www.python.org/)
 [![PyPI](https://img.shields.io/pypi/v/nexo-transfert)](https://pypi.org/project/nexo-transfert/)
+
+> **Beta release** — core transfer logic is stable and tested. CLI and Python API are subject to change.
 
 Nexo is a lightweight file transfer tool designed for local networks. Built on Veltix's high-performance TCP stack, it lets you send files between machines with zero setup — just run and go.
 
@@ -54,7 +56,7 @@ nexo send myfile.txt --to 192.168.1.42:9000
 
 ---
 
- ## How It Works
+## How It Works
 
 1. The receiver starts a Nexo server (CLI or GUI)
 2. The sender connects and pushes the file in chunks (with zlib compression)
@@ -73,7 +75,7 @@ from nexo.core import NexoServer, NexoClient
 srv = NexoServer(host="0.0.0.0", port=9000, output_dir="./downloads")
 srv.on_event(lambda evt, data: print(evt, data))
 srv.start()
-srv.stop()  # or srv.close_all()
+srv.stop()
 
 # Client
 NexoClient().send("photo.jpg", "192.168.1.42", 9000)

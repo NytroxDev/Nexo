@@ -44,7 +44,7 @@ class NexoClient:
         sender = client.get_sender()
 
         @client.route(FILE_ACK)
-        def on_ack(response, _client=None):
+        def on_ack(response):
             logger.debug(f"Server ACK: {response.content.decode()}")
 
         meta_req = Request(FILE_META, json.dumps({

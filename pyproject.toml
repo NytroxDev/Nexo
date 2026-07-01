@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nexo_transfert"
-version = "0.0.2"
+version = "1.0.0-beta"
 description = "Fast and reliable local file transfer powered by Veltix"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 keywords = ["file-transfer", "lan", "tcp", "networking"]
 dependencies = [
-    "veltix>=1.6.4",
+    "veltix>=1.7.2",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -34,6 +34,13 @@ Source = "https://github.com/NytroxDev/Nexo"
 
 [tool.setuptools.packages.find]
 include = ["nexo*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
 
 [project.scripts]
 nexo = "nexo.main:main"

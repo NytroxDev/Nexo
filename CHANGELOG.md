@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.0-beta : 2026-07-01
+
+### Added
+
+- **Python 3.14 support** — tested and compatible with latest Python release
+
+### Changed
+
+- **Migrated from Veltix 1.6.4 to 1.7.2** — full API compatibility pass:
+  - Route handler signatures corrected from `(response, client)` to `(client, response)`
+  - `ClientInfo.tags` direct access replaced with `add_tag()` / `get_tag()` / `remove_tag()` API
+  - Client-side `on_ack` callback simplified (removed unused `_client` parameter)
+- **PyPI package name** — `nexo_transfert` (install with `pip install nexo-transfert`)
+
+### Fixed
+
+- **6 route handlers** had inverted `client`/`response` arguments — caused `AttributeError` on every message
+- **Per-client tag writes silently lost** — `client.tags["x"] = y` wrote to a dict copy; now uses the proper lock-safe API
+- **Linter** — 13 `F401` warnings silenced with proper ruff config for `__init__.py` re-exports
+- **Test file** — removed unnecessary `sys.path.insert(0, ...)` hack
+
+### Security
+
+- **Veltix 1.7.2** brings thread-safe tag locking, socket cleanup on reconnect, and handshake state protection
+
 ## 0.0.3 : 2026-05-09
 
 ### Added

@@ -109,7 +109,7 @@ class NexoServer:
         self._sender = self._server.get_sender()
 
         @self._server.route(FILE_META)
-        def on_meta(response: Response, client: ClientInfo) -> None:
+        def on_meta(client: ClientInfo, response: Response) -> None:
             meta = json.loads(response.content)
             filename = meta["filename"]
             size = meta["size"]
@@ -117,7 +117,7 @@ class NexoServer:
             compression = meta.get("compression")
             t = Transfer(filename, size, num_chunks,
                          self.output_dir / filename, compression)
-            client.tags["transfer"] = t
+            client.add_tag("transfer", t)
 
             extra = f" [{compression}]" if compression else ""
             logger.info(f"Receiving {filename} ({size} bytes) "
@@ -132,8 +132,8 @@ class NexoServer:
             )
 
         @self._server.route(FILE_CHUNK)
-        def on_chunk(response: Response, client: ClientInfo) -> None:
-            t = client.tags.get("transfer")
+        def on_chunk(client: ClientInfo, response: Response) -> None:
+            t = client.get_tag("transfer")
             if not t:
                 return
             seq = struct.unpack(">I", response.content[:4])[0]
@@ -150,8 +150,8 @@ class NexoServer:
                 self._finish(t, client, logger)
 
         @self._server.route(FILE_DONE)
-        def on_done(response: Response, client: ClientInfo) -> None:
-            t = client.tags.get("transfer")
+        def on_done(client: ClientInfo, response: Response) -> None:
+            t = client.get_tag("transfer")
             if not t:
                 self._sender.send(
                     Request(FILE_ERR, b"no active transfer",
@@ -164,7 +164,7 @@ class NexoServer:
                 self._finish(t, client, logger)
 
         def on_disconnect(client: ClientInfo) -> None:
-            t = client.tags.get("transfer")
+            t = client.get_tag("transfer")
             if t:
                 logger.warning(f"Client {client.addr[0]}:{client.addr[1]} "
                                f"disconnected mid-transfer, "
@@ -177,7 +177,7 @@ class NexoServer:
                         "reason": "client disconnected",
                     })
                 t.cleanup()
-                client.tags.pop("transfer", None)
+                client.remove_tag("transfer")
 
         self._server.set_callback(Events.ON_DISCONNECT, on_disconnect)
         self._server.start()
@@ -211,7 +211,7 @@ class NexoServer:
                     request_id=t._done_response.request_id),
             client=client.conn,
         )
-        client.tags.pop("transfer", None)
+        client.remove_tag("transfer")
 
 
 def start_server(
