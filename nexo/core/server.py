@@ -9,7 +9,7 @@ from collections.abc import Callable
 from veltix import Server, ServerConfig, Request, Response, Events, BufferSize, Logger
 from veltix.server.client_info import ClientInfo
 
-from .protocol import FILE_META, FILE_CHUNK, FILE_DONE, FILE_ACK, FILE_ERR
+from .protocol import FILE_META, FILE_CHUNK, FILE_DONE, FILE_ACK, FILE_ERR, DIR_TREE, DIR_END
 
 
 EventCallback = Callable[[str, dict], None]
@@ -32,6 +32,7 @@ class Transfer:
         self._lock = threading.Lock()
         self._done_response: Optional[Response] = None
         self._closed = False
+        dst.parent.mkdir(parents=True, exist_ok=True)
         self._fh = open(dst, "wb")
 
     def add_chunk(self, seq: int, data: bytes) -> bool:
@@ -115,8 +116,9 @@ class NexoServer:
             size = meta["size"]
             num_chunks = meta["num_chunks"]
             compression = meta.get("compression")
-            t = Transfer(filename, size, num_chunks,
-                         self.output_dir / filename, compression)
+            dir_root = client.get_tag("dir_root")
+            dst = dir_root / filename if dir_root else self.output_dir / filename
+            t = Transfer(filename, size, num_chunks, dst, compression)
             client.add_tag("transfer", t)
 
             extra = f" [{compression}]" if compression else ""
@@ -162,6 +164,43 @@ class NexoServer:
             done = t.signal_done(response)
             if done:
                 self._finish(t, client, logger)
+
+        @self._server.route(DIR_TREE)
+        def on_dir_tree(client: ClientInfo, response: Response) -> None:
+            tree = json.loads(response.content)
+            base = tree.get("base", "")
+            dirs = tree.get("dirs", [])
+            root = self.output_dir / base
+            root.mkdir(parents=True, exist_ok=True)
+            for d in dirs:
+                (root / d).mkdir(parents=True, exist_ok=True)
+            client.add_tag("dir_root", root)
+            logger.info(f"Receiving directory '{base}' "
+                        f"({len(dirs)} dirs, {len(tree.get('files', []))} files) "
+                        f"from {client.addr[0]}:{client.addr[1]}")
+            if self._on_event:
+                self._on_event("dir_start", {
+                    "base": base, "dirs": len(dirs),
+                    "files": len(tree.get("files", [])),
+                    "addr": client.addr,
+                })
+            self._sender.send(
+                Request(FILE_ACK, b"ready", request_id=response.request_id),
+                client=client.conn,
+            )
+
+        @self._server.route(DIR_END)
+        def on_dir_end(client: ClientInfo, response: Response) -> None:
+            root = client.get_tag("dir_root")
+            if self._on_event and root:
+                self._on_event("dir_done", {"base": root.name})
+            logger.info(f"Directory transfer complete from "
+                        f"{client.addr[0]}:{client.addr[1]}")
+            self._sender.send(
+                Request(FILE_ACK, b"done", request_id=response.request_id),
+                client=client.conn,
+            )
+            client.remove_tag("dir_root")
 
         def on_disconnect(client: ClientInfo) -> None:
             t = client.get_tag("transfer")

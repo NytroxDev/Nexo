@@ -12,7 +12,7 @@ from nexo import cli
 
 def main(argv: Optional[List[str]] = None) -> None:
     Logger.get_instance(LoggerConfig(
-        level=LogLevel.DEBUG,
+        level=LogLevel.INFO,
         show_caller=False,
     ))
 
@@ -31,6 +31,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     send.add_argument("--to", dest="target", required=True,
                       help="Target address (host:port)")
     send.set_defaults(func=lambda a: cli.send(a.file, a.target))
+
+    send_dir = sub.add_parser("send-dir", help="Send a directory")
+    send_dir.add_argument("directory", help="Path to the directory to send")
+    send_dir.add_argument("--to", dest="target", required=True,
+                          help="Target address (host:port)")
+    send_dir.set_defaults(func=lambda a: cli.send_dir(a.directory, a.target))
 
     gui = sub.add_parser("gui", help="Launch the graphical interface")
     gui.set_defaults(func=lambda a: cli.gui())

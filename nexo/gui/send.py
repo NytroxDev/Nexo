@@ -4,8 +4,12 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from nexo.core import send_file
+from nexo.core import send_file, send_directory
 from nexo.gui.theme import SURFACE, FG, FONT_SM
+
+
+_MODE_FILE = "File"
+_MODE_DIR = "Directory"
 
 
 class SendTab:
@@ -15,12 +19,20 @@ class SendTab:
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=(0, 6))
 
-        ttk.Label(row, text="File:").pack(side=tk.LEFT, padx=(0, 4))
+        self.mode_var = tk.StringVar(value=_MODE_FILE)
+        ttk.Radiobutton(row, text=_MODE_FILE, variable=self.mode_var,
+                        value=_MODE_FILE, command=self._mode_changed).pack(
+            side=tk.LEFT, padx=(0, 4))
+        ttk.Radiobutton(row, text=_MODE_DIR, variable=self.mode_var,
+                        value=_MODE_DIR, command=self._mode_changed).pack(
+            side=tk.LEFT, padx=(0, 12))
+
         self.path_var = tk.StringVar()
-        ttk.Entry(row, textvariable=self.path_var).pack(
-            side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
-        ttk.Button(row, text="Browse",
-                   command=self._browse).pack(side=tk.LEFT)
+        self.path_entry = ttk.Entry(row, textvariable=self.path_var)
+        self.path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
+        self.browse_btn = ttk.Button(row, text="Browse",
+                                     command=self._browse)
+        self.browse_btn.pack(side=tk.LEFT)
 
         row2 = ttk.Frame(parent)
         row2.pack(fill=tk.X, pady=(0, 12))
@@ -43,31 +55,55 @@ class SendTab:
                            borderwidth=0, relief=tk.FLAT, padx=6, pady=4)
         self.log.pack(fill=tk.BOTH, expand=True)
 
+    def _mode_changed(self) -> None:
+        self.path_var.set("")
+
     def _browse(self) -> None:
-        f = filedialog.askopenfilename()
-        if f:
-            self.path_var.set(f)
+        if self.mode_var.get() == _MODE_DIR:
+            d = filedialog.askdirectory()
+            if d:
+                self.path_var.set(d)
+        else:
+            f = filedialog.askopenfilename()
+            if f:
+                self.path_var.set(f)
 
     def _send(self) -> None:
         path = self.path_var.get()
         target = self.target_var.get()
         if not path or not target:
-            messagebox.showwarning("Nexo", "Select a file and enter a target.")
+            messagebox.showwarning("Nexo", "Select a file/directory and enter a target.")
             return
+
+        name = Path(path).name
+        is_dir = self.mode_var.get() == _MODE_DIR
+        label = "Directory" if is_dir else "File"
 
         self.send_btn.configure(state=tk.DISABLED)
         self.progress["value"] = 0
-        self._log(f"Sending {Path(path).name} to {target} ...")
+        self._log(f"Sending {label} '{name}' to {target} ...")
 
         def task():
             try:
                 host, port_str = target.split(":")
-                send_file(path, host, int(port_str))
+                port = int(port_str)
+                if is_dir:
+                    def prog(current, total, fname):
+                        pct = int((current + 1) / total * 100)
+                        self.log.winfo_toplevel().after(
+                            0, self._update_progress, pct, current + 1, total)
+                    send_directory(path, host, port, on_progress=prog)
+                else:
+                    send_file(path, host, port)
                 self.log.winfo_toplevel().after(0, self._done, True, None)
             except Exception as e:
                 self.log.winfo_toplevel().after(0, self._done, False, str(e))
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _update_progress(self, pct: int, current: int, total: int) -> None:
+        self.progress["value"] = pct
+        self._log(f"  [{current}/{total}]")
 
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
