@@ -22,7 +22,8 @@ class NexoClient:
         client.send("photo.jpg", "192.168.1.42", 9000)
     """
 
-    def send(self, filepath: str, target: str, port: int) -> None:
+    def send(self, filepath: str, target: str, port: int,
+             on_progress: Optional[Callable[[int, int, str], None]] = None) -> None:
         logger = Logger.get_instance()
 
         path = Path(filepath)
@@ -71,6 +72,8 @@ class NexoClient:
                 sender.send(
                     Request(FILE_CHUNK, struct.pack(">I", idx) + payload))
                 total_sent += len(data)
+                if on_progress:
+                    on_progress(total_sent, file_size, path.name)
                 pct = (int(total_sent / file_size * 100)
                        if file_size > 0 else 100)
                 saved = len(data) - len(payload) if use_compress else 0
@@ -137,9 +140,10 @@ class NexoClient:
             client.disconnect()
             return
 
+        total_files = len(all_files)
         for idx, rel_path in enumerate(all_files):
             if on_progress:
-                on_progress(idx, len(all_files), rel_path)
+                on_progress(idx + 1, total_files, rel_path)
             full_path = root / rel_path
             file_size = full_path.stat().st_size
             use_compress = file_size >= MIN_COMPRESS_SIZE
@@ -186,9 +190,10 @@ class NexoClient:
         client.disconnect()
 
 
-def send_file(filepath: str, target: str, port: int) -> None:
+def send_file(filepath: str, target: str, port: int,
+              on_progress: Optional[Callable[[int, int, str], None]] = None) -> None:
     """Legacy wrapper."""
-    NexoClient().send(filepath, target, port)
+    NexoClient().send(filepath, target, port, on_progress=on_progress)
 
 
 def send_directory(dirpath: str, target: str, port: int,

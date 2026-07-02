@@ -87,23 +87,25 @@ class SendTab:
             try:
                 host, port_str = target.split(":")
                 port = int(port_str)
+
+                def prog(sent, total, label):
+                    pct = int(sent / total * 100) if total > 0 else 0
+                    self.log.winfo_toplevel().after(
+                        0, self._update_progress, pct, label)
+
                 if is_dir:
-                    def prog(current, total, fname):
-                        pct = int((current + 1) / total * 100)
-                        self.log.winfo_toplevel().after(
-                            0, self._update_progress, pct, current + 1, total)
                     send_directory(path, host, port, on_progress=prog)
                 else:
-                    send_file(path, host, port)
+                    send_file(path, host, port, on_progress=prog)
                 self.log.winfo_toplevel().after(0, self._done, True, None)
             except Exception as e:
                 self.log.winfo_toplevel().after(0, self._done, False, str(e))
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _update_progress(self, pct: int, current: int, total: int) -> None:
+    def _update_progress(self, pct: int, label: str) -> None:
         self.progress["value"] = pct
-        self._log(f"  [{current}/{total}]")
+        self.status_bar.configure(text=label)
 
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
