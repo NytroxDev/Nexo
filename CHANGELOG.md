@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.0 : 2026-07-02
+
+### Added
+
+- **Directory transfer** — `send-dir` CLI command, `send_directory()` API, `DIR_TREE`/`DIR_END` protocol messages
+- **Progress callback** — `on_progress(current, total, label)` on both `send()` and `send_directory()`
+- **GUI Send tab treeview** — replaced progress bar with a full table (file, size, status) + log pane, matching the Receive tab
+- **GUI Cancel button** — abort an ongoing transfer cleanly
+- **Transfer speed stats** — live speed (MB/s), byte count, and file progress shown in both Send and Receive tabs
+- **GUI folder picker** — File/Directory radio toggle on Send tab
+- **Auto-scroll** — Receive tab treeview scrolls to the latest entry
+
+### Changed
+
+- **Chunk size** — 64 KB → **1 MB**; Veltix buffer `LARGE` → `HUGE` for higher throughput
+- **Directory progress** — now reports per-chunk byte progress (like single files) instead of per-file index
+- **Log verbosity** — Receive tab no longer logs every file start/done (treeview suffices); shows only "Transfer complete" / errors
+- **Veltix** — bumped dependency to `>=1.7.5` (fixes SO_REUSEPORT on Windows, async backend default)
+
+### Fixed
+
+- **Zero-byte file crash** — `ZeroDivisionError` in receive progress when `size == 0`
+- **Python 3.8 compat** — `dict[str, str]` annotation now guarded with `from __future__ import annotations`
+
 ## 1.0.0-beta : 2026-07-01
 
 ### Added
