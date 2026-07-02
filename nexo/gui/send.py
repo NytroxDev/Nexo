@@ -238,8 +238,7 @@ class SendTab:
             display = min(pct, 99)
             self.tree.set(iid, "status", f"Sending {display}%")
             self.tree.see(iid)
-            if pct > self.progress["value"]:
-                self.progress["value"] = pct
+            self.progress["value"] = pct
 
         # stats
         elapsed = time.time() - self._start_time
@@ -253,6 +252,8 @@ class SendTab:
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
         self.cancel_btn.configure(state=tk.DISABLED)
+        if ok:
+            self._files_done += 1  # count the final file
         self.progress["value"] = 100 if ok else 0
         if self._cancelled:
             for iid in list(self._iid_map.values()):
