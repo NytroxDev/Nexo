@@ -1,17 +1,5 @@
 # Changelog
 
-## 1.2.0 : 2026-07-02
-
-### Fixed
-
-- **"Transfer complete" spam** — no longer logged after every file in a directory transfer (only `dir_done` triggers it)
-- **"Sending 100%" before ACK** — progress capped at 99% until the server confirms; status jumps to "Done" on real completion
-- **Python 3.8 crash** — `collections.abc.Callable` is not subscriptable on 3.8; switched to `typing.Callable`
-
-### Added
-
-- **Progress bar** — restored in the Send tab (between stats and treeview), mirrors overall transfer progress
-
 ## 1.1.0 : 2026-07-02
 
 ### Added
