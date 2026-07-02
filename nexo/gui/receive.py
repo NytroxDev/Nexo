@@ -134,7 +134,6 @@ class ReceiveTab:
                                    tags=("active",))
             self._iid_map[data["filename"]] = iid
             self.tree.see(iid)
-            self._log(f"← {data['filename']} ({_fmt(data['size'])})")
 
         elif evt == "file_progress":
             iid = self._iid_map.get(data["filename"])
@@ -148,8 +147,12 @@ class ReceiveTab:
             if iid:
                 self.tree.set(iid, "status", "Done")
                 self.tree.item(iid, tags=("done",))
-            self._log(f"✓ {data['filename']} ({_fmt(data['received'])})")
             self.status_bar.configure(text=f"Received {data['filename']}")
+            if not self._iid_map:
+                self._log("✓ Transfer complete")
+
+        elif evt == "dir_done":
+            self._log(f"✓ Transfer complete: {data['base']}")
 
         elif evt == "file_abort":
             iid = self._iid_map.pop(data["filename"], None)
