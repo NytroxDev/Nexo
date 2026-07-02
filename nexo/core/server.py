@@ -181,6 +181,7 @@ class NexoServer:
                 self._on_event("dir_start", {
                     "base": base, "dirs": len(dirs),
                     "files": len(tree.get("files", [])),
+                    "total_bytes": tree.get("total_bytes", 0),
                     "addr": client.addr,
                 })
             self._sender.send(

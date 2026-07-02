@@ -9,9 +9,9 @@ GREEN = "#9ece6a"
 YELLOW = "#e0af68"
 BORDER = "#1a1a2e"
 
-FONT = ("Segoe UI", 10)
-FONT_SM = ("Segoe UI", 9)
-FONT_BOLD = ("Segoe UI", 10, "bold")
+FONT = ("Segoe UI", "sans-serif", 10)
+FONT_SM = ("Segoe UI", "sans-serif", 9)
+FONT_BOLD = ("Segoe UI", "sans-serif", 10, "bold")
 
 
 def apply() -> None:

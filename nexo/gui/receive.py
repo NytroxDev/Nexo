@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from nexo.core import start_server
+from nexo.gui.config import load as load_config, save as save_config
 from nexo.gui.theme import SURFACE, FG, FONT_SM, GREEN, RED, YELLOW
 
 
@@ -28,6 +29,18 @@ def _fmt_speed(bps: float) -> str:
     return f"{bps:.0f} B/s"
 
 
+def _fmt_eta(seconds: float) -> str:
+    if seconds < 0 or not seconds < 1e9:
+        return ""
+    if seconds < 1:
+        return "<1s"
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
+
+
 class ReceiveTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
@@ -37,6 +50,8 @@ class ReceiveTab:
         # stats tracking
         self._start_time = 0.0
         self._bytes_received = 0
+        self._total_bytes = 0
+        self._transfer_total_bytes = 0
         self._cur_fname = ""
         self._cur_received = 0
         self._files_done = 0
@@ -50,7 +65,7 @@ class ReceiveTab:
         self.port_entry.pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Label(ctrl, text="Save to:").pack(side=tk.LEFT, padx=(0, 4))
-        self.dir_var = tk.StringVar(value=str(Path.home() / "Downloads"))
+        self.dir_var = tk.StringVar(value=load_config().get("receive_dir", str(Path.home() / "Downloads")))
         e = ttk.Entry(ctrl, textvariable=self.dir_var)
         e.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         ttk.Button(ctrl, text="Browse",
@@ -135,10 +150,13 @@ class ReceiveTab:
         self._file_paths.clear()
         self._start_time = time.time()
         self._bytes_received = 0
+        self._total_bytes = 0
+        self._transfer_total_bytes = 0
         self._cur_fname = ""
         self._cur_received = 0
         self._files_done = 0
         self.stats_var.set("")
+        save_config({"receive_dir": str(out)})
 
         def cb(evt: str, data: dict) -> None:
             self.tree.winfo_toplevel().after(0, self._on_event, evt, data)
@@ -172,6 +190,7 @@ class ReceiveTab:
 
     def _on_event(self, evt: str, data: dict) -> None:
         if evt == "file_start":
+            self._total_bytes += data["size"]
             self._file_paths[data["filename"]] = (
                 self._dir_root or self._output_dir) / data["filename"]
             iid = self.tree.insert("", tk.END,
@@ -201,10 +220,17 @@ class ReceiveTab:
                 self.tree.see(iid)
                 self._set_title(f"Receiving {fname} ({pct}%)")
 
-            # stats
+            # stats + ETA
             elapsed = time.time() - self._start_time
             speed = self._bytes_received / elapsed if elapsed > 0 else 0
+            total_for_eta = self._transfer_total_bytes or self._total_bytes
+            remaining = total_for_eta - self._bytes_received
+            eta = ""
+            if remaining > 0 and speed > 0:
+                eta = _fmt_eta(remaining / speed)
             parts = [f"Speed: {_fmt_speed(speed)}"]
+            if eta:
+                parts.append(f"ETA: {eta}")
             if self._files_done or self._bytes_received:
                 parts.append(f"Received: {_fmt(self._bytes_received)}")
             self.stats_var.set("  |  ".join(parts))
@@ -221,6 +247,7 @@ class ReceiveTab:
 
         elif evt == "dir_start":
             self._dir_root = self._output_dir / data["base"]
+            self._transfer_total_bytes = data.get("total_bytes", 0)
 
         elif evt == "dir_done":
             self._dir_root = None

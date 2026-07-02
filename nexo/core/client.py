@@ -118,16 +118,19 @@ class NexoClient:
 
         all_dirs = []
         all_files = []
+        total_bytes = 0
         for path in sorted(root.rglob("*")):
             rel = path.relative_to(root)
             if path.is_dir():
                 all_dirs.append(str(rel))
             else:
                 all_files.append(str(rel))
+                total_bytes += path.stat().st_size
 
         base = root.name
         logger.info(f"Sending directory '{base}' "
-                    f"({len(all_dirs)} dirs, {len(all_files)} files) "
+                    f"({len(all_dirs)} dirs, {len(all_files)} files, "
+                    f"{total_bytes} bytes) "
                     f"to {target}:{port}")
 
         self._client = Client(ClientConfig(
@@ -146,6 +149,7 @@ class NexoClient:
             "base": base,
             "dirs": all_dirs,
             "files": all_files,
+            "total_bytes": total_bytes,
         }).encode()
         tree_req = Request(DIR_TREE, tree_payload)
         tree_ack = self._client.send_and_wait(tree_req, timeout=SEND_TIMEOUT)

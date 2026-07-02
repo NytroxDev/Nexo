@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from nexo.core.client import NexoClient
+from nexo.gui.config import load as load_config, save as save_config
 from nexo.gui.theme import SURFACE, FG, FONT_SM, GREEN, RED, YELLOW
 
 
@@ -31,6 +32,18 @@ def _fmt_speed(bps: float) -> str:
     return f"{bps:.0f} B/s"
 
 
+def _fmt_eta(seconds: float) -> str:
+    if seconds < 0 or not seconds < 1e9:
+        return ""
+    if seconds < 1:
+        return "<1s"
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m"
+
+
 class SendTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
@@ -41,10 +54,11 @@ class SendTab:
         # stats tracking
         self._start_time = 0.0
         self._bytes_sent = 0
+        self._total_bytes = 0
+        self._total_files = 0
+        self._files_done = 0
         self._cur_fname = ""
         self._cur_sent = 0
-        self._files_done = 0
-        self._total_files = 0
 
         # top controls
         row = ttk.Frame(parent)
@@ -69,7 +83,7 @@ class SendTab:
         row2.pack(fill=tk.X, pady=(0, 4))
 
         ttk.Label(row2, text="Target:").pack(side=tk.LEFT, padx=(0, 4))
-        self.target_var = tk.StringVar(value="127.0.0.1:9000")
+        self.target_var = tk.StringVar(value=load_config().get("target", "127.0.0.1:9000"))
         ttk.Entry(row2, textvariable=self.target_var, width=25).pack(
             side=tk.LEFT, padx=(0, 8))
 
@@ -165,13 +179,25 @@ class SendTab:
         # reset stats
         self._start_time = time.time()
         self._bytes_sent = 0
+        self._total_bytes = 0
+        self._total_files = 0
+        self._files_done = 0
         self._cur_fname = ""
         self._cur_sent = 0
-        self._files_done = 0
-        self._total_files = 0
         self.stats_var.set("")
         self.progress["value"] = 0
 
+        # compute overall totals upfront
+        if is_dir:
+            root = Path(path)
+            all_files = [f for f in root.rglob("*") if f.is_file()]
+            self._total_files = len(all_files)
+            self._total_bytes = sum(f.stat().st_size for f in all_files)
+        else:
+            self._total_files = 1
+            self._total_bytes = Path(path).stat().st_size
+
+        save_config({"target": target})
         self._log(f"Sending {label} '{name}' to {target} ...")
 
         def task():
@@ -213,7 +239,7 @@ class SendTab:
         self.tree.see(iid)
 
     def _on_progress(self, sent: int, total: int, fname: str) -> None:
-        # track per-file byte delta
+        # track per-file byte delta and overall bytes sent
         if fname == self._cur_fname:
             delta = sent - self._cur_sent
         else:
@@ -225,13 +251,11 @@ class SendTab:
                     self.tree.set(prev_iid, "status", "Done")
                     self.tree.item(prev_iid, tags=("done",))
             self._cur_fname = fname
-            self.progress["value"] = 0
         self._bytes_sent += delta
         self._cur_sent = sent
 
         # treeview row
         if fname not in self._iid_map:
-            self._total_files += 1
             iid = self.tree.insert("", tk.END,
                                    values=(fname, _fmt(total), "Sending..."),
                                    tags=("active",))
@@ -243,12 +267,22 @@ class SendTab:
             display = min(pct, 99)
             self.tree.set(iid, "status", f"Sending {display}%")
             self.tree.see(iid)
-            self.progress["value"] = pct
 
-        # stats
+        # overall progress bar
+        if self._total_bytes:
+            overall = int(self._bytes_sent / self._total_bytes * 100)
+            self.progress["value"] = min(overall, 100)
+
+        # stats + ETA
         elapsed = time.time() - self._start_time
         speed = self._bytes_sent / elapsed if elapsed > 0 else 0
+        remaining = self._total_bytes - self._bytes_sent
+        eta = ""
+        if remaining > 0 and speed > 0:
+            eta = _fmt_eta(remaining / speed)
         parts = [f"Speed: {_fmt_speed(speed)}"]
+        if eta:
+            parts.append(f"ETA: {eta}")
         if self._total_files > 1:
             parts.append(f"Files: {self._files_done}/{self._total_files}")
         self.stats_var.set("  |  ".join(parts))

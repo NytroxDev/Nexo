@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from nexo.gui import theme
+from nexo.gui.config import load as load_config, save as save_config
 from nexo.gui.receive import ReceiveTab
 from nexo.gui.send import SendTab
 from nexo.gui.theme import SURFACE, FG, FONT_SM
@@ -9,9 +10,11 @@ from nexo.gui.theme import SURFACE, FG, FONT_SM
 
 class NexoGUI:
     def __init__(self) -> None:
+        cfg = load_config()
+
         self.root = tk.Tk()
         self.root.title("Nexo")
-        self.root.geometry("680x480")
+        self.root.geometry(cfg.get("geometry", "680x480"))
         self.root.minsize(600, 380)
         self.root.configure(bg=theme.BG)
 
@@ -38,6 +41,7 @@ class NexoGUI:
         self.root.protocol("WM_DELETE_WINDOW", self._close)
 
     def _close(self) -> None:
+        save_config({"geometry": self.root.geometry()})
         self.recv_tab.shutdown()
         self.root.destroy()
 
