@@ -220,7 +220,12 @@ class SendTab:
             delta = sent
             if self._cur_fname:
                 self._files_done += 1
+                prev_iid = self._iid_map.get(self._cur_fname)
+                if prev_iid:
+                    self.tree.set(prev_iid, "status", "Done")
+                    self.tree.item(prev_iid, tags=("done",))
             self._cur_fname = fname
+            self.progress["value"] = 0
         self._bytes_sent += delta
         self._cur_sent = sent
 

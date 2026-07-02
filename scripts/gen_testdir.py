@@ -11,7 +11,6 @@ import argparse
 import os
 import random
 import string
-import sys
 
 
 def parse_size(s: str) -> int:
