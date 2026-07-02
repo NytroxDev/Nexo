@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from nexo.core import send_file, send_directory
+from nexo.core.client import NexoClient
 from nexo.gui.theme import SURFACE, FG, FONT_SM, GREEN, RED, YELLOW
 
 
@@ -24,6 +24,8 @@ class SendTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
         self._iid_map: dict[str, str] = {}
+        self._client: Optional[NexoClient] = None
+        self._cancelled = False
 
         # top controls
         row = ttk.Frame(parent)
@@ -54,7 +56,12 @@ class SendTab:
 
         self.send_btn = ttk.Button(row2, text="Send",
                                    command=self._send)
-        self.send_btn.pack(side=tk.LEFT)
+        self.send_btn.pack(side=tk.LEFT, padx=(0, 4))
+
+        self.cancel_btn = ttk.Button(row2, text="Cancel",
+                                     command=self._cancel,
+                                     state=tk.DISABLED)
+        self.cancel_btn.pack(side=tk.LEFT)
 
         # paned: treeview on top, log below
         paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
@@ -123,6 +130,8 @@ class SendTab:
         self._clear_log()
         self.tree.delete(*self.tree.get_children())
         self._iid_map.clear()
+        self._cancelled = False
+        self.cancel_btn.configure(state=tk.NORMAL)
 
         self._log(f"Sending {label} '{name}' to {target} ...")
 
@@ -135,19 +144,27 @@ class SendTab:
                     self.log.winfo_toplevel().after(
                         0, self._on_progress, sent, total, fname)
 
+                c = NexoClient()
+                self._client = c
                 if is_dir:
-                    send_directory(path, host, port, on_progress=prog)
+                    c.send_directory(path, host, port, on_progress=prog)
                 else:
-                    # pre-insert the single-file row so progress works
                     fsize = Path(path).stat().st_size
                     self.log.winfo_toplevel().after(
                         0, self._insert_file, name, fsize)
-                    send_file(path, host, port, on_progress=prog)
+                    c.send(path, host, port, on_progress=prog)
                 self.log.winfo_toplevel().after(0, self._done, True, None)
-            except Exception as e:
-                self.log.winfo_toplevel().after(0, self._done, False, str(e))
+            except Exception:
+                self.log.winfo_toplevel().after(0, self._done, False, None)
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _cancel(self) -> None:
+        self._cancelled = True
+        self.cancel_btn.configure(state=tk.DISABLED)
+        if self._client:
+            self._client.cancel()
+        self._log("Cancelling...")
 
     def _insert_file(self, fname: str, fsize: int) -> None:
         iid = self.tree.insert("", tk.END,
@@ -172,18 +189,22 @@ class SendTab:
 
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
-        if ok:
-            # mark all active rows as done
+        self.cancel_btn.configure(state=tk.DISABLED)
+        if self._cancelled:
+            for iid in list(self._iid_map.values()):
+                self.tree.set(iid, "status", "Cancelled")
+                self.tree.item(iid, tags=("fail",))
+            self._log("✗ Cancelled")
+        elif ok:
             for iid in list(self._iid_map.values()):
                 self.tree.set(iid, "status", "Done")
                 self.tree.item(iid, tags=("done",))
             self._log("✓ Transfer complete!")
         else:
-            # mark remaining active rows as failed
             for iid in list(self._iid_map.values()):
                 self.tree.set(iid, "status", "Failed")
                 self.tree.item(iid, tags=("fail",))
-            self._log(f"✗ Error: {err}")
+            self._log("✗ Transfer failed")
         self.status_bar.configure(text="Ready")
 
     def _log(self, msg: str) -> None:

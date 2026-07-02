@@ -22,6 +22,18 @@ class NexoClient:
         client.send("photo.jpg", "192.168.1.42", 9000)
     """
 
+    def __init__(self) -> None:
+        self._client: Optional[Client] = None
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+        if self._client:
+            try:
+                self._client.disconnect()
+            except Exception:
+                pass
+
     def send(self, filepath: str, target: str, port: int,
              on_progress: Optional[Callable[[int, int, str], None]] = None) -> None:
         logger = Logger.get_instance()
@@ -37,15 +49,15 @@ class NexoClient:
         logger.info(f"Sending {path.name} ({file_size} bytes) to "
                     f"{target}:{port}{' [zlib]' if use_compress else ''}")
 
-        client = Client(ClientConfig(
+        self._client = Client(ClientConfig(
             server_addr=target,
             port=port,
             buffer_size=BufferSize.LARGE,
         ))
-        client.connect()
-        sender = client.get_sender()
+        self._client.connect()
+        sender = self._client.get_sender()
 
-        @client.route(FILE_ACK)
+        @self._client.route(FILE_ACK)
         def on_ack(response):
             logger.debug(f"Server ACK: {response.content.decode()}")
 
@@ -55,10 +67,10 @@ class NexoClient:
             "num_chunks": num_chunks,
             "compression": "zlib" if use_compress else None,
         }).encode())
-        meta_ack = client.send_and_wait(meta_req, timeout=SEND_TIMEOUT)
+        meta_ack = self._client.send_and_wait(meta_req, timeout=SEND_TIMEOUT)
         if not meta_ack or meta_ack.content != b"ready":
             logger.error("Server rejected or timed out on metadata")
-            client.disconnect()
+            self._client.disconnect()
             return
         logger.debug("Server ready "
                      f"(compression: {'zlib' if use_compress else 'none'})")
@@ -67,6 +79,8 @@ class NexoClient:
         total_sent = 0
         with open(path, "rb") as fh:
             for idx in range(num_chunks):
+                if self._cancelled:
+                    return
                 data = fh.read(CHUNK_SIZE)
                 payload = zlib.compress(data, 1) if use_compress else data
                 sender.send(
@@ -84,13 +98,13 @@ class NexoClient:
                     last_pct = pct
 
         done = Request(FILE_DONE, b"")
-        ack = client.send_and_wait(done, timeout=SEND_TIMEOUT)
+        ack = self._client.send_and_wait(done, timeout=SEND_TIMEOUT)
 
         if ack and ack.content == b"done":
             logger.success(f"Transfer complete: {path.name}")
         else:
             logger.error("Transfer failed — no ACK from server")
-        client.disconnect()
+        self._client.disconnect()
 
 
     def send_directory(self, dirpath: str, target: str, port: int,
@@ -116,15 +130,15 @@ class NexoClient:
                     f"({len(all_dirs)} dirs, {len(all_files)} files) "
                     f"to {target}:{port}")
 
-        client = Client(ClientConfig(
+        self._client = Client(ClientConfig(
             server_addr=target,
             port=port,
             buffer_size=BufferSize.LARGE,
         ))
-        client.connect()
-        sender = client.get_sender()
+        self._client.connect()
+        sender = self._client.get_sender()
 
-        @client.route(FILE_ACK)
+        @self._client.route(FILE_ACK)
         def on_ack(response):
             logger.debug(f"Server ACK: {response.content.decode()}")
 
@@ -134,13 +148,15 @@ class NexoClient:
             "files": all_files,
         }).encode()
         tree_req = Request(DIR_TREE, tree_payload)
-        tree_ack = client.send_and_wait(tree_req, timeout=SEND_TIMEOUT)
+        tree_ack = self._client.send_and_wait(tree_req, timeout=SEND_TIMEOUT)
         if not tree_ack or tree_ack.content != b"ready":
             logger.error("Server rejected or timed out on directory tree")
-            client.disconnect()
+            self._client.disconnect()
             return
 
         for rel_path in all_files:
+            if self._cancelled:
+                return
             full_path = root / rel_path
             file_size = full_path.stat().st_size
             use_compress = file_size >= MIN_COMPRESS_SIZE
@@ -155,15 +171,17 @@ class NexoClient:
                 "num_chunks": num_chunks,
                 "compression": "zlib" if use_compress else None,
             }).encode())
-            meta_ack = client.send_and_wait(meta_req, timeout=SEND_TIMEOUT)
+            meta_ack = self._client.send_and_wait(meta_req, timeout=SEND_TIMEOUT)
             if not meta_ack or meta_ack.content != b"ready":
                 logger.error(f"Server rejected {rel_path}, aborting")
-                client.disconnect()
+                self._client.disconnect()
                 return
 
             total_sent = 0
             with open(full_path, "rb") as fh:
                 for ci in range(num_chunks):
+                    if self._cancelled:
+                        return
                     data = fh.read(CHUNK_SIZE)
                     payload = zlib.compress(data, 1) if use_compress else data
                     sender.send(
@@ -173,31 +191,35 @@ class NexoClient:
                         on_progress(total_sent, file_size, rel_path)
 
             done = Request(FILE_DONE, b"")
-            ack = client.send_and_wait(done, timeout=SEND_TIMEOUT)
+            ack = self._client.send_and_wait(done, timeout=SEND_TIMEOUT)
             if not ack or ack.content != b"done":
                 logger.error(f"Failed to complete {rel_path}")
-                client.disconnect()
+                self._client.disconnect()
                 return
 
             logger.success(f"  {rel_path} done")
 
         end_req = Request(DIR_END, b"")
-        end_ack = client.send_and_wait(end_req, timeout=SEND_TIMEOUT)
+        end_ack = self._client.send_and_wait(end_req, timeout=SEND_TIMEOUT)
         if end_ack and end_ack.content == b"done":
             logger.success(f"Directory transfer complete: {base}")
         else:
             logger.error("Directory transfer failed — no ACK from server")
 
-        client.disconnect()
+        self._client.disconnect()
 
 
 def send_file(filepath: str, target: str, port: int,
-              on_progress: Optional[Callable[[int, int, str], None]] = None) -> None:
-    """Legacy wrapper."""
-    NexoClient().send(filepath, target, port, on_progress=on_progress)
+              on_progress: Optional[Callable[[int, int, str], None]] = None) -> NexoClient:
+    """Legacy wrapper. Returns the NexoClient for cancellation."""
+    c = NexoClient()
+    c.send(filepath, target, port, on_progress=on_progress)
+    return c
 
 
 def send_directory(dirpath: str, target: str, port: int,
-                   on_progress: Optional[Callable[[int, int, str], None]] = None) -> None:
-    """Send a directory and all its contents."""
-    NexoClient().send_directory(dirpath, target, port, on_progress=on_progress)
+                   on_progress: Optional[Callable[[int, int, str], None]] = None) -> NexoClient:
+    """Send a directory and all its contents. Returns the NexoClient for cancellation."""
+    c = NexoClient()
+    c.send_directory(dirpath, target, port, on_progress=on_progress)
+    return c
