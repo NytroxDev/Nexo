@@ -133,6 +133,7 @@ class ReceiveTab:
                                            "Receiving..."),
                                    tags=("active",))
             self._iid_map[data["filename"]] = iid
+            self.tree.see(iid)
             self._log(f"← {data['filename']} ({_fmt(data['size'])})")
 
         elif evt == "file_progress":
@@ -140,6 +141,7 @@ class ReceiveTab:
             if iid and data["size"]:
                 pct = int(data["received"] / data["size"] * 100)
                 self.tree.set(iid, "status", f"Receiving {pct}%")
+                self.tree.see(iid)
 
         elif evt == "file_done":
             iid = self._iid_map.pop(data["filename"], None)

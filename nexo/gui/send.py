@@ -5,17 +5,27 @@ from pathlib import Path
 from typing import Optional
 
 from nexo.core import send_file, send_directory
-from nexo.gui.theme import SURFACE, FG, FONT_SM
+from nexo.gui.theme import SURFACE, FG, FONT_SM, GREEN, RED, YELLOW
 
 
 _MODE_FILE = "File"
 _MODE_DIR = "Directory"
 
 
+def _fmt(n: int) -> str:
+    for u in ("B", "KB", "MB", "GB"):
+        if n < 1024:
+            return f"{n:.1f} {u}" if u != "B" else f"{n} B"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
 class SendTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
+        self._iid_map: dict[str, str] = {}
 
+        # top controls
         row = ttk.Frame(parent)
         row.pack(fill=tk.X, pady=(0, 6))
 
@@ -46,14 +56,44 @@ class SendTab:
                                    command=self._send)
         self.send_btn.pack(side=tk.LEFT)
 
-        self.progress = ttk.Progressbar(parent, mode="determinate")
-        self.progress.pack(fill=tk.X, pady=(0, 8))
-        self.progress["maximum"] = 100
+        # paned: treeview on top, log below
+        paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
+        paned.pack(fill=tk.BOTH, expand=True)
 
-        self.log = tk.Text(parent, bg=SURFACE, fg=FG, font=FONT_SM,
+        tw = ttk.Frame(paned)
+        paned.add(tw, weight=2)
+
+        cols = ("file", "size", "status")
+        self.tree = ttk.Treeview(tw, columns=cols, show="headings",
+                                 height=6)
+        self.tree.heading("file", text="File")
+        self.tree.heading("size", text="Size")
+        self.tree.heading("status", text="Status")
+        self.tree.column("file", width=220)
+        self.tree.column("size", width=90, anchor=tk.CENTER)
+        self.tree.column("status", width=130, anchor=tk.CENTER)
+
+        scr = ttk.Scrollbar(tw, orient=tk.VERTICAL,
+                            command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scr.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scr.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.tree.tag_configure("done", foreground=GREEN)
+        self.tree.tag_configure("active", foreground=YELLOW)
+        self.tree.tag_configure("fail", foreground=RED)
+
+        lf = ttk.Frame(paned)
+        paned.add(lf, weight=1)
+
+        self.log = tk.Text(lf, bg=SURFACE, fg=FG, font=FONT_SM,
                            wrap=tk.WORD, state=tk.DISABLED,
                            borderwidth=0, relief=tk.FLAT, padx=6, pady=4)
-        self.log.pack(fill=tk.BOTH, expand=True)
+        self.log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        lscr = ttk.Scrollbar(lf, orient=tk.VERTICAL, command=self.log.yview)
+        self.log.configure(yscrollcommand=lscr.set)
+        lscr.pack(side=tk.RIGHT, fill=tk.Y)
 
     def _mode_changed(self) -> None:
         self.path_var.set("")
@@ -80,7 +120,10 @@ class SendTab:
         label = "Directory" if is_dir else "File"
 
         self.send_btn.configure(state=tk.DISABLED)
-        self.progress["value"] = 0
+        self._clear_log()
+        self.tree.delete(*self.tree.get_children())
+        self._iid_map.clear()
+
         self._log(f"Sending {label} '{name}' to {target} ...")
 
         def task():
@@ -88,14 +131,17 @@ class SendTab:
                 host, port_str = target.split(":")
                 port = int(port_str)
 
-                def prog(sent, total, label):
-                    pct = int(sent / total * 100) if total > 0 else 0
+                def prog(sent: int, total: int, fname: str) -> None:
                     self.log.winfo_toplevel().after(
-                        0, self._update_progress, pct, label)
+                        0, self._on_progress, sent, total, fname)
 
                 if is_dir:
                     send_directory(path, host, port, on_progress=prog)
                 else:
+                    # pre-insert the single-file row so progress works
+                    fsize = Path(path).stat().st_size
+                    self.log.winfo_toplevel().after(
+                        0, self._insert_file, name, fsize)
                     send_file(path, host, port, on_progress=prog)
                 self.log.winfo_toplevel().after(0, self._done, True, None)
             except Exception as e:
@@ -103,16 +149,40 @@ class SendTab:
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _update_progress(self, pct: int, label: str) -> None:
-        self.progress["value"] = pct
-        self.status_bar.configure(text=label)
+    def _insert_file(self, fname: str, fsize: int) -> None:
+        iid = self.tree.insert("", tk.END,
+                               values=(fname, _fmt(fsize), "Sending..."),
+                               tags=("active",))
+        self._iid_map[fname] = iid
+        self.tree.see(iid)
+
+    def _on_progress(self, sent: int, total: int, fname: str) -> None:
+        if fname not in self._iid_map:
+            iid = self.tree.insert("", tk.END,
+                                   values=(fname, _fmt(total), "Sending..."),
+                                   tags=("active",))
+            self._iid_map[fname] = iid
+            self.tree.see(iid)
+        iid = self._iid_map[fname]
+        if total:
+            pct = int(sent / total * 100)
+            self.tree.set(iid, "status", f"Sending {pct}%")
+            self.tree.see(iid)
+        self.status_bar.configure(text=fname)
 
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
         if ok:
-            self.progress["value"] = 100
+            # mark all active rows as done
+            for iid in list(self._iid_map.values()):
+                self.tree.set(iid, "status", "Done")
+                self.tree.item(iid, tags=("done",))
             self._log("✓ Transfer complete!")
         else:
+            # mark remaining active rows as failed
+            for iid in list(self._iid_map.values()):
+                self.tree.set(iid, "status", "Failed")
+                self.tree.item(iid, tags=("fail",))
             self._log(f"✗ Error: {err}")
         self.status_bar.configure(text="Ready")
 
@@ -120,4 +190,9 @@ class SendTab:
         self.log.configure(state=tk.NORMAL)
         self.log.insert(tk.END, msg + "\n")
         self.log.see(tk.END)
+        self.log.configure(state=tk.DISABLED)
+
+    def _clear_log(self) -> None:
+        self.log.configure(state=tk.NORMAL)
+        self.log.delete("1.0", tk.END)
         self.log.configure(state=tk.DISABLED)

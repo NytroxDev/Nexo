@@ -140,10 +140,7 @@ class NexoClient:
             client.disconnect()
             return
 
-        total_files = len(all_files)
-        for idx, rel_path in enumerate(all_files):
-            if on_progress:
-                on_progress(idx + 1, total_files, rel_path)
+        for rel_path in all_files:
             full_path = root / rel_path
             file_size = full_path.stat().st_size
             use_compress = file_size >= MIN_COMPRESS_SIZE
@@ -164,12 +161,16 @@ class NexoClient:
                 client.disconnect()
                 return
 
+            total_sent = 0
             with open(full_path, "rb") as fh:
-                for idx in range(num_chunks):
+                for ci in range(num_chunks):
                     data = fh.read(CHUNK_SIZE)
                     payload = zlib.compress(data, 1) if use_compress else data
                     sender.send(
-                        Request(FILE_CHUNK, struct.pack(">I", idx) + payload))
+                        Request(FILE_CHUNK, struct.pack(">I", ci) + payload))
+                    total_sent += len(data)
+                    if on_progress:
+                        on_progress(total_sent, file_size, rel_path)
 
             done = Request(FILE_DONE, b"")
             ack = client.send_and_wait(done, timeout=SEND_TIMEOUT)
