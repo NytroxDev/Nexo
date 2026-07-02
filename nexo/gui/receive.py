@@ -137,7 +137,7 @@ class ReceiveTab:
 
         elif evt == "file_progress":
             iid = self._iid_map.get(data["filename"])
-            if iid:
+            if iid and data["size"]:
                 pct = int(data["received"] / data["size"] * 100)
                 self.tree.set(iid, "status", f"Receiving {pct}%")
 
