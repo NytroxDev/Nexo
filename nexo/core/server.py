@@ -3,8 +3,7 @@ import struct
 import threading
 import zlib
 from pathlib import Path
-from typing import Any, Dict, Optional
-from collections.abc import Callable
+from typing import Any, Callable, Dict, Optional
 
 from veltix import Server, ServerConfig, Request, Response, Events, BufferSize, Logger
 from veltix.server.client_info import ClientInfo
