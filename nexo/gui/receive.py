@@ -1,3 +1,4 @@
+import time
 import tkinter as tk
 from tkinter import ttk
 import threading
@@ -15,11 +16,26 @@ def _fmt(n: int) -> str:
     return f"{n:.1f} TB"
 
 
+def _fmt_speed(bps: float) -> str:
+    if bps >= 1_048_576:
+        return f"{bps / 1_048_576:.1f} MB/s"
+    if bps >= 1024:
+        return f"{bps / 1024:.1f} KB/s"
+    return f"{bps:.0f} B/s"
+
+
 class ReceiveTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
         self.server = None
         self.running = False
+
+        # stats tracking
+        self._start_time = 0.0
+        self._bytes_received = 0
+        self._cur_fname = ""
+        self._cur_received = 0
+        self._files_done = 0
 
         ctrl = ttk.Frame(parent)
         ctrl.pack(fill=tk.X, pady=(0, 6))
@@ -40,10 +56,16 @@ class ReceiveTab:
                                      command=self._toggle)
         self.toggle_btn.pack(side=tk.LEFT)
 
+        # stats bar
+        self.stats_var = tk.StringVar()
+        stats_bar = ttk.Label(ctrl, textvariable=self.stats_var,
+                              font=FONT_SM, anchor=tk.W,
+                              background=SURFACE, foreground=FG)
+        stats_bar.pack(side=tk.RIGHT, padx=(8, 0))
+
         paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
         paned.pack(fill=tk.BOTH, expand=True)
 
-        # table
         tw = ttk.Frame(paned)
         paned.add(tw, weight=2)
 
@@ -67,7 +89,6 @@ class ReceiveTab:
         self.tree.tag_configure("active", foreground=YELLOW)
         self.tree.tag_configure("fail", foreground=RED)
 
-        # log
         lf = ttk.Frame(paned)
         paned.add(lf, weight=1)
 
@@ -100,6 +121,12 @@ class ReceiveTab:
         self.tree.delete(*self.tree.get_children())
         self._iid_map.clear()
         self._clear_log()
+        self._start_time = time.time()
+        self._bytes_received = 0
+        self._cur_fname = ""
+        self._cur_received = 0
+        self._files_done = 0
+        self.stats_var.set("")
 
         def cb(evt: str, data: dict) -> None:
             self.tree.winfo_toplevel().after(0, self._on_event, evt, data)
@@ -124,6 +151,7 @@ class ReceiveTab:
         self.port_entry.configure(state=tk.NORMAL)
         self._log("Server stopped")
         self.status_bar.configure(text="Ready")
+        self.stats_var.set("")
 
     def _on_event(self, evt: str, data: dict) -> None:
         if evt == "file_start":
@@ -136,17 +164,37 @@ class ReceiveTab:
             self.tree.see(iid)
 
         elif evt == "file_progress":
-            iid = self._iid_map.get(data["filename"])
+            # track byte delta
+            fname = data["filename"]
+            recv = data["received"]
+            if fname == self._cur_fname:
+                delta = recv - self._cur_received
+            else:
+                delta = recv
+                self._cur_fname = fname
+            self._bytes_received += delta
+            self._cur_received = recv
+
+            iid = self._iid_map.get(fname)
             if iid and data["size"]:
-                pct = int(data["received"] / data["size"] * 100)
+                pct = int(recv / data["size"] * 100)
                 self.tree.set(iid, "status", f"Receiving {pct}%")
                 self.tree.see(iid)
+
+            # stats
+            elapsed = time.time() - self._start_time
+            speed = self._bytes_received / elapsed if elapsed > 0 else 0
+            parts = [f"Speed: {_fmt_speed(speed)}"]
+            if self._files_done or self._bytes_received:
+                parts.append(f"Received: {_fmt(self._bytes_received)}")
+            self.stats_var.set("  |  ".join(parts))
 
         elif evt == "file_done":
             iid = self._iid_map.pop(data["filename"], None)
             if iid:
                 self.tree.set(iid, "status", "Done")
                 self.tree.item(iid, tags=("done",))
+            self._files_done += 1
             self.status_bar.configure(text=f"Received {data['filename']}")
             if not self._iid_map:
                 self._log("✓ Transfer complete")

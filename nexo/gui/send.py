@@ -1,3 +1,4 @@
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
@@ -20,12 +21,28 @@ def _fmt(n: int) -> str:
     return f"{n:.1f} TB"
 
 
+def _fmt_speed(bps: float) -> str:
+    if bps >= 1_048_576:
+        return f"{bps / 1_048_576:.1f} MB/s"
+    if bps >= 1024:
+        return f"{bps / 1024:.1f} KB/s"
+    return f"{bps:.0f} B/s"
+
+
 class SendTab:
     def __init__(self, parent: ttk.Frame, status_bar: tk.Label):
         self.status_bar = status_bar
         self._iid_map: dict[str, str] = {}
         self._client: Optional[NexoClient] = None
         self._cancelled = False
+
+        # stats tracking
+        self._start_time = 0.0
+        self._bytes_sent = 0
+        self._cur_fname = ""
+        self._cur_sent = 0
+        self._files_done = 0
+        self._total_files = 0
 
         # top controls
         row = ttk.Frame(parent)
@@ -47,7 +64,7 @@ class SendTab:
         self.browse_btn.pack(side=tk.LEFT)
 
         row2 = ttk.Frame(parent)
-        row2.pack(fill=tk.X, pady=(0, 12))
+        row2.pack(fill=tk.X, pady=(0, 4))
 
         ttk.Label(row2, text="Target:").pack(side=tk.LEFT, padx=(0, 4))
         self.target_var = tk.StringVar(value="127.0.0.1:9000")
@@ -62,6 +79,13 @@ class SendTab:
                                      command=self._cancel,
                                      state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT)
+
+        # stats bar
+        self.stats_var = tk.StringVar()
+        stats_bar = ttk.Label(parent, textvariable=self.stats_var,
+                              font=FONT_SM, anchor=tk.W,
+                              background=SURFACE, foreground=FG)
+        stats_bar.pack(fill=tk.X, pady=(0, 4))
 
         # paned: treeview on top, log below
         paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
@@ -133,6 +157,15 @@ class SendTab:
         self._cancelled = False
         self.cancel_btn.configure(state=tk.NORMAL)
 
+        # reset stats
+        self._start_time = time.time()
+        self._bytes_sent = 0
+        self._cur_fname = ""
+        self._cur_sent = 0
+        self._files_done = 0
+        self._total_files = 0
+        self.stats_var.set("")
+
         self._log(f"Sending {label} '{name}' to {target} ...")
 
         def task():
@@ -174,7 +207,20 @@ class SendTab:
         self.tree.see(iid)
 
     def _on_progress(self, sent: int, total: int, fname: str) -> None:
+        # track per-file byte delta
+        if fname == self._cur_fname:
+            delta = sent - self._cur_sent
+        else:
+            delta = sent
+            if self._cur_fname:
+                self._files_done += 1
+            self._cur_fname = fname
+        self._bytes_sent += delta
+        self._cur_sent = sent
+
+        # treeview row
         if fname not in self._iid_map:
+            self._total_files += 1
             iid = self.tree.insert("", tk.END,
                                    values=(fname, _fmt(total), "Sending..."),
                                    tags=("active",))
@@ -185,6 +231,14 @@ class SendTab:
             pct = int(sent / total * 100)
             self.tree.set(iid, "status", f"Sending {pct}%")
             self.tree.see(iid)
+
+        # stats
+        elapsed = time.time() - self._start_time
+        speed = self._bytes_sent / elapsed if elapsed > 0 else 0
+        parts = [f"Speed: {_fmt_speed(speed)}"]
+        if self._total_files > 1:
+            parts.append(f"Files: {self._files_done}/{self._total_files}")
+        self.stats_var.set("  |  ".join(parts))
         self.status_bar.configure(text=fname)
 
     def _done(self, ok: bool, err: Optional[str]) -> None:
@@ -195,16 +249,24 @@ class SendTab:
                 self.tree.set(iid, "status", "Cancelled")
                 self.tree.item(iid, tags=("fail",))
             self._log("✗ Cancelled")
+            self.stats_var.set("")
         elif ok:
             for iid in list(self._iid_map.values()):
                 self.tree.set(iid, "status", "Done")
                 self.tree.item(iid, tags=("done",))
+            # final stats
+            elapsed = time.time() - self._start_time
+            avg_speed = self._bytes_sent / elapsed if elapsed > 0 else 0
+            self.stats_var.set(f"Completed — "
+                               f"{_fmt(self._bytes_sent)} in {elapsed:.1f}s "
+                               f"({_fmt_speed(avg_speed)})")
             self._log("✓ Transfer complete!")
         else:
             for iid in list(self._iid_map.values()):
                 self.tree.set(iid, "status", "Failed")
                 self.tree.item(iid, tags=("fail",))
             self._log("✗ Transfer failed")
+            self.stats_var.set("")
         self.status_bar.configure(text="Ready")
 
     def _log(self, msg: str) -> None:

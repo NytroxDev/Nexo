@@ -10,8 +10,8 @@ from veltix import Client, ClientConfig, Request, BufferSize, Logger
 from .protocol import FILE_META, FILE_CHUNK, FILE_DONE, FILE_ACK, DIR_TREE, DIR_END, MIN_COMPRESS_SIZE
 
 
-CHUNK_SIZE = 65536
-SEND_TIMEOUT = 30.0
+CHUNK_SIZE = 1048576  # 1 MB
+SEND_TIMEOUT = 120.0
 
 
 class NexoClient:
@@ -52,7 +52,7 @@ class NexoClient:
         self._client = Client(ClientConfig(
             server_addr=target,
             port=port,
-            buffer_size=BufferSize.LARGE,
+            buffer_size=BufferSize.HUGE,
         ))
         self._client.connect()
         sender = self._client.get_sender()
@@ -133,7 +133,7 @@ class NexoClient:
         self._client = Client(ClientConfig(
             server_addr=target,
             port=port,
-            buffer_size=BufferSize.LARGE,
+            buffer_size=BufferSize.HUGE,
         ))
         self._client.connect()
         sender = self._client.get_sender()
