@@ -87,7 +87,10 @@ class SendTab:
         stats_bar = ttk.Label(parent, textvariable=self.stats_var,
                               font=FONT_SM, anchor=tk.W,
                               background=SURFACE, foreground=FG)
-        stats_bar.pack(fill=tk.X, pady=(0, 4))
+        stats_bar.pack(fill=tk.X, pady=(0, 2))
+
+        self.progress = ttk.Progressbar(parent, mode="determinate")
+        self.progress.pack(fill=tk.X, pady=(0, 4))
 
         # paned: treeview on top, log below
         paned = ttk.PanedWindow(parent, orient=tk.VERTICAL)
@@ -167,6 +170,7 @@ class SendTab:
         self._files_done = 0
         self._total_files = 0
         self.stats_var.set("")
+        self.progress["value"] = 0
 
         self._log(f"Sending {label} '{name}' to {target} ...")
 
@@ -231,8 +235,11 @@ class SendTab:
         iid = self._iid_map[fname]
         if total:
             pct = int(sent / total * 100)
-            self.tree.set(iid, "status", f"Sending {pct}%")
+            display = min(pct, 99)
+            self.tree.set(iid, "status", f"Sending {display}%")
             self.tree.see(iid)
+            if pct > self.progress["value"]:
+                self.progress["value"] = pct
 
         # stats
         elapsed = time.time() - self._start_time
@@ -246,6 +253,7 @@ class SendTab:
     def _done(self, ok: bool, err: Optional[str]) -> None:
         self.send_btn.configure(state=tk.NORMAL)
         self.cancel_btn.configure(state=tk.DISABLED)
+        self.progress["value"] = 100 if ok else 0
         if self._cancelled:
             for iid in list(self._iid_map.values()):
                 self.tree.set(iid, "status", "Cancelled")

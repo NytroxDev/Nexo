@@ -196,8 +196,6 @@ class ReceiveTab:
                 self.tree.item(iid, tags=("done",))
             self._files_done += 1
             self.status_bar.configure(text=f"Received {data['filename']}")
-            if not self._iid_map:
-                self._log("✓ Transfer complete")
 
         elif evt == "dir_done":
             self._log(f"✓ Transfer complete: {data['base']}")
