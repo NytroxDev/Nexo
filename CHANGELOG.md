@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0 : 2026-07-02
+
+### Added
+
+- **Global progress bar** — shows overall transfer progress (total bytes) instead of per-file; total bytes pre-computed upfront
+- **Persistent configuration** — target, receive directory, and window geometry saved to `~/.config/nexo/config.json`
+- **ETA on both tabs** — estimated time remaining based on average speed and remaining bytes; shows `<1s` for very small values
+- **Directory total bytes** — server now receives total payload size for accurate receive-side ETA
+- **SendTab shutdown** — closing the window during an active transfer cancels it cleanly
+
+### Changed
+
+- **File counter** — now pre-computed upfront instead of incremented during transfer (no off-by-one)
+- **`_cancelled` thread-safe** — uses `threading.Event` instead of a plain `bool` to prevent data races
+- **Transfer timeout** — server cleans up stale transfers after 120 seconds of inactivity
+
+### Fixed
+
+- **`cli/send.py`** — validates `host:port` format and port range; wraps calls in try/except
+- **`server.py on_meta`** — handles malformed JSON / missing keys gracefully (sends `FILE_ERR` back)
+- **`client.py` legacy wrappers** — `send_file()` / `send_directory()` return `None` on error instead of crashing
+- **Font Linux compat** — fallback from `"Segoe UI"` to `("Segoe UI", "sans-serif", ...)`
+- **`test_data/` removed from git** — added to `.gitignore` and squashed out of history
+
+### Security
+
+- **Full code audit** — `AUDIT.md` documents 15 issues (P0–P3); all P0, P1, P2, P3 resolved
+
 ## 1.2.0 : 2026-07-02
 
 ### Fixed
