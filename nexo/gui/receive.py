@@ -1,8 +1,12 @@
+import os
+import subprocess
+import sys
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import threading
 from pathlib import Path
+from typing import Optional
 
 from nexo.core import start_server
 from nexo.gui.theme import SURFACE, FG, FONT_SM, GREEN, RED, YELLOW
@@ -101,7 +105,12 @@ class ReceiveTab:
         self.log.configure(yscrollcommand=lscr.set)
         lscr.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self._iid_map = {}
+        self._iid_map: dict[str, str] = {}
+        self._output_dir: Path = Path.home() / "Downloads"
+        self._dir_root: Optional[Path] = None
+        self._file_paths: dict[str, Path] = {}
+
+        self.tree.bind("<Double-1>", self._on_double_click)
 
     def _browse(self) -> None:
         d = tk.filedialog.askdirectory(initialdir=self.dir_var.get())
@@ -121,6 +130,9 @@ class ReceiveTab:
         self.tree.delete(*self.tree.get_children())
         self._iid_map.clear()
         self._clear_log()
+        self._output_dir = out
+        self._dir_root = None
+        self._file_paths.clear()
         self._start_time = time.time()
         self._bytes_received = 0
         self._cur_fname = ""
@@ -149,12 +161,19 @@ class ReceiveTab:
         self.running = False
         self.toggle_btn.configure(text="Start", style="TButton")
         self.port_entry.configure(state=tk.NORMAL)
+        self._set_title()
         self._log("Server stopped")
         self.status_bar.configure(text="Ready")
         self.stats_var.set("")
 
+    def _set_title(self, text: str = "") -> None:
+        self.status_bar.winfo_toplevel().title(
+            f"Nexo — {text}" if text else "Nexo")
+
     def _on_event(self, evt: str, data: dict) -> None:
         if evt == "file_start":
+            self._file_paths[data["filename"]] = (
+                self._dir_root or self._output_dir) / data["filename"]
             iid = self.tree.insert("", tk.END,
                                    values=(data["filename"],
                                            _fmt(data["size"]),
@@ -180,6 +199,7 @@ class ReceiveTab:
                 pct = int(recv / data["size"] * 100)
                 self.tree.set(iid, "status", f"Receiving {pct}%")
                 self.tree.see(iid)
+                self._set_title(f"Receiving {fname} ({pct}%)")
 
             # stats
             elapsed = time.time() - self._start_time
@@ -196,8 +216,15 @@ class ReceiveTab:
                 self.tree.item(iid, tags=("done",))
             self._files_done += 1
             self.status_bar.configure(text=f"Received {data['filename']}")
+            if not self._iid_map:
+                self._set_title()
+
+        elif evt == "dir_start":
+            self._dir_root = self._output_dir / data["base"]
 
         elif evt == "dir_done":
+            self._dir_root = None
+            self._set_title()
             self._log(f"✓ Transfer complete: {data['base']}")
 
         elif evt == "file_abort":
@@ -206,6 +233,28 @@ class ReceiveTab:
                 self.tree.set(iid, "status", "Failed")
                 self.tree.item(iid, tags=("fail",))
             self._log(f"✗ {data['filename']} — {data['reason']}")
+
+    def _on_double_click(self, event: tk.Event) -> None:
+        sel = self.tree.selection()
+        if not sel:
+            return
+        tags = self.tree.item(sel[0], "tags")
+        if "done" not in tags:
+            return
+        filename = self.tree.set(sel[0], "file")
+        path = self._file_paths.get(filename)
+        if not path or not path.exists():
+            messagebox.showerror("Nexo", f"File not found:\n{path}")
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as e:
+            messagebox.showerror("Nexo", f"Failed to open file:\n{e}")
 
     def _log(self, msg: str) -> None:
         self.log.configure(state=tk.NORMAL)
