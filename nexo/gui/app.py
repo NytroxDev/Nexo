@@ -43,6 +43,7 @@ class NexoGUI:
     def _close(self) -> None:
         save_config({"geometry": self.root.geometry()})
         self.recv_tab.shutdown()
+        self.send_tab.shutdown()
         self.root.destroy()
 
     def run(self) -> None:

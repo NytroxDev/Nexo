@@ -328,6 +328,11 @@ class SendTab:
         self.log.see(tk.END)
         self.log.configure(state=tk.DISABLED)
 
+    def shutdown(self) -> None:
+        self._cancelled = True
+        if self._client:
+            self._client.cancel()
+
     def _clear_log(self) -> None:
         self.log.configure(state=tk.NORMAL)
         self.log.delete("1.0", tk.END)

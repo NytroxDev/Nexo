@@ -1,6 +1,7 @@
 import json
 import math
 import struct
+import threading
 import zlib
 from pathlib import Path
 from typing import Callable, Optional
@@ -24,10 +25,10 @@ class NexoClient:
 
     def __init__(self) -> None:
         self._client: Optional[Client] = None
-        self._cancelled = False
+        self._cancelled = threading.Event()
 
     def cancel(self) -> None:
-        self._cancelled = True
+        self._cancelled.set()
         if self._client:
             try:
                 self._client.disconnect()
@@ -79,7 +80,7 @@ class NexoClient:
         total_sent = 0
         with open(path, "rb") as fh:
             for idx in range(num_chunks):
-                if self._cancelled:
+                if self._cancelled.is_set():
                     return
                 data = fh.read(CHUNK_SIZE)
                 payload = zlib.compress(data, 1) if use_compress else data
@@ -184,7 +185,7 @@ class NexoClient:
             total_sent = 0
             with open(full_path, "rb") as fh:
                 for ci in range(num_chunks):
-                    if self._cancelled:
+                    if self._cancelled.is_set():
                         return
                     data = fh.read(CHUNK_SIZE)
                     payload = zlib.compress(data, 1) if use_compress else data
@@ -214,16 +215,24 @@ class NexoClient:
 
 
 def send_file(filepath: str, target: str, port: int,
-              on_progress: Optional[Callable[[int, int, str], None]] = None) -> NexoClient:
-    """Legacy wrapper. Returns the NexoClient for cancellation."""
+              on_progress: Optional[Callable[[int, int, str], None]] = None) -> Optional[NexoClient]:
+    """Legacy wrapper. Returns the NexoClient for cancellation, or None on error."""
     c = NexoClient()
-    c.send(filepath, target, port, on_progress=on_progress)
-    return c
+    try:
+        c.send(filepath, target, port, on_progress=on_progress)
+        return c
+    except Exception as e:
+        Logger.get_instance().error(f"send_file failed: {e}")
+        return None
 
 
 def send_directory(dirpath: str, target: str, port: int,
-                   on_progress: Optional[Callable[[int, int, str], None]] = None) -> NexoClient:
-    """Send a directory and all its contents. Returns the NexoClient for cancellation."""
+                   on_progress: Optional[Callable[[int, int, str], None]] = None) -> Optional[NexoClient]:
+    """Send a directory and all its contents. Returns the NexoClient for cancellation, or None on error."""
     c = NexoClient()
-    c.send_directory(dirpath, target, port, on_progress=on_progress)
-    return c
+    try:
+        c.send_directory(dirpath, target, port, on_progress=on_progress)
+        return c
+    except Exception as e:
+        Logger.get_instance().error(f"send_directory failed: {e}")
+        return None

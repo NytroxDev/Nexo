@@ -11,6 +11,8 @@ from veltix.server.client_info import ClientInfo
 from .protocol import FILE_META, FILE_CHUNK, FILE_DONE, FILE_ACK, FILE_ERR, DIR_TREE, DIR_END
 
 
+TRANSFER_TIMEOUT = 120.0  # seconds without progress before cleanup
+
 EventCallback = Callable[[str, dict], None]
 
 
@@ -110,15 +112,25 @@ class NexoServer:
 
         @self._server.route(FILE_META)
         def on_meta(client: ClientInfo, response: Response) -> None:
-            meta = json.loads(response.content)
-            filename = meta["filename"]
-            size = meta["size"]
-            num_chunks = meta["num_chunks"]
+            try:
+                meta = json.loads(response.content)
+                filename = meta["filename"]
+                size = meta["size"]
+                num_chunks = meta["num_chunks"]
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning(f"Invalid FILE_META from {client.addr[0]}:{client.addr[1]}: {e}")
+                self._sender.send(
+                    Request(FILE_ERR, f"invalid metadata: {e}".encode(),
+                            request_id=response.request_id),
+                    client=client.conn,
+                )
+                return
             compression = meta.get("compression")
             dir_root = client.get_tag("dir_root")
             dst = dir_root / filename if dir_root else self.output_dir / filename
             t = Transfer(filename, size, num_chunks, dst, compression)
             client.add_tag("transfer", t)
+            self._reset_transfer_timeout(client)
 
             extra = f" [{compression}]" if compression else ""
             logger.info(f"Receiving {filename} ({size} bytes) "
@@ -137,6 +149,7 @@ class NexoServer:
             t = client.get_tag("transfer")
             if not t:
                 return
+            self._reset_transfer_timeout(client)
             seq = struct.unpack(">I", response.content[:4])[0]
             done = t.add_chunk(seq, response.content[4:])
             logger.debug(f"Chunk {seq}/{t.num_chunks - 1} for "
@@ -160,6 +173,7 @@ class NexoServer:
                     client=client.conn,
                 )
                 return
+            self._clear_transfer_timeout(client)
             done = t.signal_done(response)
             if done:
                 self._finish(t, client, logger)
@@ -203,6 +217,7 @@ class NexoServer:
             client.remove_tag("dir_root")
 
         def on_disconnect(client: ClientInfo) -> None:
+            self._clear_transfer_timeout(client)
             t = client.get_tag("transfer")
             if t:
                 logger.warning(f"Client {client.addr[0]}:{client.addr[1]} "
@@ -233,6 +248,38 @@ class NexoServer:
             self._server = None
 
     close_all = stop
+
+    def _reset_transfer_timeout(self, client: ClientInfo) -> None:
+        old = client.get_tag("timeout_timer")
+        if old:
+            old.cancel()
+        timer = threading.Timer(TRANSFER_TIMEOUT, self._on_transfer_timeout, args=[client])
+        timer.daemon = True
+        timer.start()
+        client.add_tag("timeout_timer", timer)
+
+    def _clear_transfer_timeout(self, client: ClientInfo) -> None:
+        timer = client.get_tag("timeout_timer")
+        if timer:
+            timer.cancel()
+            client.remove_tag("timeout_timer")
+
+    def _on_transfer_timeout(self, client: ClientInfo) -> None:
+        t = client.get_tag("transfer")
+        if not t:
+            return
+        logger = Logger.get_instance()
+        logger.warning(f"Transfer timeout for {t.filename} from "
+                       f"{client.addr[0]}:{client.addr[1]}")
+        if self._on_event:
+            self._on_event("file_abort", {
+                "filename": t.filename,
+                "received": t.received,
+                "size": t.size,
+                "reason": "timeout",
+            })
+        t.cleanup()
+        client.remove_tag("transfer")
 
     def _finish(
         self, t: Transfer, client: ClientInfo, logger: Any,

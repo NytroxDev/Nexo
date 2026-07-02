@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import socket
 import tempfile
 import threading
 import time
@@ -12,6 +13,17 @@ from nexo.core.client import send_file
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 19870
+
+
+def _wait_for_port(host: str, port: int, timeout: float = 5.0) -> bool:
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except (ConnectionRefusedError, OSError):
+            time.sleep(0.05)
+    return False
 
 
 def test_concurrent_transfers():
@@ -29,14 +41,17 @@ def test_concurrent_transfers():
             p.write_bytes(os.urandom(file_size))
             files.append((p.name, hashlib.sha256(p.read_bytes()).hexdigest()))
 
-        start_server(SERVER_HOST, SERVER_PORT, out)
-        time.sleep(0.3)
+        srv = start_server(SERVER_HOST, SERVER_PORT, out)
+        assert _wait_for_port(SERVER_HOST, SERVER_PORT), \
+            "server did not start in time"
 
         errs = []
 
         def _send(p):
             try:
-                send_file(str(p), SERVER_HOST, SERVER_PORT)
+                result = send_file(str(p), SERVER_HOST, SERVER_PORT)
+                if result is None:
+                    errs.append((p.name, "send_file returned None"))
             except Exception as e:
                 errs.append((p.name, e))
 
@@ -45,7 +60,9 @@ def test_concurrent_transfers():
             t.start()
         for t in threads:
             t.join(timeout=60)
-        time.sleep(1.0)
+
+        srv.close_all()
+        time.sleep(0.2)
 
         assert not errs, f"Errors: {errs}"
         missing = [n for n, _ in files if not (out / n).exists()]
