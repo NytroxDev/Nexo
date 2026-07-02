@@ -6,8 +6,6 @@
 
 - **"Transfer complete" spam** — no longer logged after every file in a directory transfer (only `dir_done` triggers it)
 - **"Sending 100%" before ACK** — progress capped at 99% until the server confirms; status jumps to "Done" on real completion
-- **Progress bar stuck at 100%** — removed `pct > last_value` guard that prevented it from resetting between files in directory mode
-- **Files count off by one** — last file in directory was never counted as done; `_done` now increments the counter
 - **Python 3.8 crash** — `collections.abc.Callable` is not subscriptable on 3.8; switched to `typing.Callable`
 
 ### Added
