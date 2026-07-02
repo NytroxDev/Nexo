@@ -5,19 +5,26 @@
 ### Added
 
 - **Python 3.14 support** — tested and compatible with latest Python release
+- **Directory transfer** — new `send-dir` CLI command and `send_directory()` API ; sends a `DIR_TREE` with the full
+  structure, then each file individually via the existing chunked mechanism (`DIR_TREE`/`DIR_END` messages)
+- **Progress tracking** — `on_progress` callback on both `send()` and `send_directory()` for real-time UI updates
+- **GUI folder picker** — SendTab now has a File/Directory radio toggle ; Browse adapts to mode
 
 ### Changed
 
-- **Migrated from Veltix 1.6.4 to 1.7.2** — full API compatibility pass:
+- **Migrated from Veltix 1.6.4 to 1.7.5** — full API compatibility pass:
   - Route handler signatures corrected from `(response, client)` to `(client, response)`
   - `ClientInfo.tags` direct access replaced with `add_tag()` / `get_tag()` / `remove_tag()` API
   - Client-side `on_ack` callback simplified (removed unused `_client` parameter)
+- **Log level reduced** — default from `DEBUG` to `INFO` for quieter output
 - **PyPI package name** — `nexo_transfert` (install with `pip install nexo-transfert`)
 
 ### Fixed
 
 - **6 route handlers** had inverted `client`/`response` arguments — caused `AttributeError` on every message
 - **Per-client tag writes silently lost** — `client.tags["x"] = y` wrote to a dict copy; now uses the proper lock-safe API
+- **Directory transfer file path** — files in subdirectories were saved directly under output dir instead of preserving
+  the parent folder structure ; fixed by resolving paths through `dir_root`
 - **Linter** — 13 `F401` warnings silenced with proper ruff config for `__init__.py` re-exports
 - **Test file** — removed unnecessary `sys.path.insert(0, ...)` hack
 

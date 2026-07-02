@@ -47,6 +47,26 @@ Example:
 nexo send photo.jpg --to 192.168.1.42:9000
 ```
 
+### `nexo send-dir`
+
+Send a directory and all its contents to a remote server.
+
+```
+nexo send-dir DIRECTORY --to HOST:PORT
+```
+
+| Argument | Description |
+|---|---|
+| `DIRECTORY` | Path to the directory to send |
+| `--to` | Target address in `host:port` format |
+
+The server preserves the directory structure — the folder and its subfolders are recreated at the destination.
+
+Example:
+```bash
+nexo send-dir ./project --to 192.168.1.42:9000
+```
+
 ### `nexo gui`
 
 Launch the Tkinter graphical interface.
@@ -55,7 +75,7 @@ Launch the Tkinter graphical interface.
 nexo gui
 ```
 
-No options. The GUI lets you start/stop a server with a configurable port and output directory (Receive tab), and send files to a target address (Send tab).
+No options. The GUI lets you start/stop a server with a configurable port and output directory (Receive tab), and send files or directories to a target address (Send tab) with a File/Directory mode toggle.
 
 ---
 
@@ -111,23 +131,33 @@ NexoClient().send("photo.jpg", "192.168.1.42", 9000)
 | Method | Description |
 |---|---|
 | `send(filepath, target, port)` | Send a file to a remote server |
+| `send_directory(dirpath, target, port)` | Send a directory and all its contents |
 
 | Parameter | Description |
 |---|---|
 | `filepath` | Path to the file to send |
+| `dirpath` | Path to the directory to send |
 | `target` | Server hostname or IP |
 | `port` | Server port |
+
+Both `send()` and `send_directory()` accept an optional `on_progress` callback:
+```python
+def on_progress(sent: int, total: int, label: str) -> None: ...
+```
 
 ### Legacy API
 
 ```python
-from nexo.core import start_server, send_file
+from nexo.core import start_server, send_file, send_directory
 
 # Returns a NexoServer instance (same API: .on_event(), .stop())
 server = start_server("0.0.0.0", 9000, Path("./downloads"), on_event=cb)
 
 # Sends a file (blocking)
 send_file("photo.jpg", "192.168.1.42", 9000)
+
+# Sends a directory (blocking)
+send_directory("./project", "192.168.1.42", 9000)
 ```
 
 ---
